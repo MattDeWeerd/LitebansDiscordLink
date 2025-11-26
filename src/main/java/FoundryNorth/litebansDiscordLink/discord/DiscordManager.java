@@ -3,10 +3,13 @@ package FoundryNorth.litebansDiscordLink.discord;
 import FoundryNorth.litebansDiscordLink.LitebansDiscordLink;
 import FoundryNorth.litebansDiscordLink.database.PunishmentTracker;
 import github.scarsz.discordsrv.DiscordSRV;
+import github.scarsz.discordsrv.api.Subscribe;
+import github.scarsz.discordsrv.api.events.AccountLinkedEvent;
 import github.scarsz.discordsrv.dependencies.jda.api.entities.*;
 import github.scarsz.discordsrv.dependencies.jda.api.events.guild.member.GuildMemberJoinEvent;
 import github.scarsz.discordsrv.dependencies.jda.api.events.message.MessageReceivedEvent;
 import github.scarsz.discordsrv.dependencies.jda.api.hooks.ListenerAdapter;
+import litebans.api.Database;
 import org.bukkit.Bukkit;
 
 import java.util.UUID;
@@ -43,6 +46,10 @@ public class DiscordManager extends ListenerAdapter {
 
         // Register our listener with JDA
         discordSRV.getJda().addEventListener(this);
+
+        // Register DiscordSRV API listener for account linking events
+        DiscordSRV.api.subscribe(this);
+
         plugin.getLogger().info("Discord manager initialized successfully!");
     }
 
@@ -53,8 +60,12 @@ public class DiscordManager extends ListenerAdapter {
         DiscordSRV discordSRV = DiscordSRV.getPlugin();
         if (discordSRV != null && discordSRV.getJda() != null) {
             discordSRV.getJda().removeEventListener(this);
-            plugin.getLogger().info("Discord manager unregistered");
         }
+
+        // Unregister DiscordSRV API listener
+        DiscordSRV.api.unsubscribe(this);
+
+        plugin.getLogger().info("Discord manager unregistered");
     }
 
     /**
@@ -558,6 +569,107 @@ public class DiscordManager extends ListenerAdapter {
                     }
                 },
                 error -> plugin.getLogger().warning("Failed to send log message to Discord: " + error.getMessage()));
+    }
+
+    /**
+     * Listen for account linking events and check for existing punishments
+     */
+    @Subscribe
+    public void onAccountLinked(AccountLinkedEvent event) {
+        UUID minecraftUuid = event.getPlayer().getUniqueId();
+        String discordId = event.getUser().getId();
+        String playerName = event.getPlayer().getName();
+
+        if (plugin.isDebug()) {
+            plugin.getLogger()
+                    .info("Account linked: " + playerName + " (" + minecraftUuid + ") -> Discord ID: " + discordId);
+        }
+
+        // Check for active punishments in LiteBans
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            PunishmentInfo activePunishment = checkLiteBansForActivePunishment(minecraftUuid);
+
+            if (activePunishment != null) {
+                // Found an active punishment - sync it to Discord
+                if (plugin.isDebug()) {
+                    plugin.getLogger()
+                            .info("Found active " + activePunishment.type + " for newly linked account: " + playerName);
+                }
+
+                // Calculate expiry time
+                long expiryTime = activePunishment.expiryTimestamp == 0 ? -1 : activePunishment.expiryTimestamp;
+                long duration = activePunishment.expiryTimestamp == 0 ? -1
+                        : (activePunishment.expiryTimestamp - System.currentTimeMillis());
+
+                // Add to tracker
+                PunishmentTracker.PunishmentInfo info = new PunishmentTracker.PunishmentInfo(
+                        minecraftUuid, playerName, activePunishment.type, activePunishment.reason, expiryTime);
+                tracker.addPunishment(discordId, info);
+
+                // Log retroactive application
+                plugin.getPunishmentLogger().logPunishment(playerName, minecraftUuid.toString(), discordId,
+                        activePunishment.type, activePunishment.reason, duration);
+                plugin.getPunishmentLogger().logDiscordAction(discordId, "Retroactive Punishment",
+                        "Applied existing " + activePunishment.type + " from LiteBans after account link");
+
+                if (plugin.isDebug()) {
+                    plugin.getLogger().info("Applied retroactive punishment for " + playerName);
+                }
+
+                // Send DM notification
+                sendPunishmentNotification(discordId, activePunishment.type, activePunishment.reason, expiryTime,
+                        playerName);
+
+                // Apply Discord enforcement on main thread
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    applyDiscordPunishment(discordId, info, playerName, activePunishment.reason, duration);
+                });
+            } else if (plugin.isDebug()) {
+                plugin.getLogger().info("No active punishments found for newly linked account: " + playerName);
+            }
+        });
+    }
+
+    /**
+     * Check LiteBans database for any active ban or mute for a player
+     */
+    private PunishmentInfo checkLiteBansForActivePunishment(UUID uuid) {
+        // Check for active ban (pass null for IP and server to check all)
+        litebans.api.Entry ban = Database.get().getBan(uuid, null, null);
+        if (ban != null) {
+            return new PunishmentInfo(
+                    "BAN",
+                    ban.getReason(),
+                    ban.getDateEnd() // 0 for permanent
+            );
+        }
+
+        // Check for active mute (pass null for IP and server to check all)
+        litebans.api.Entry mute = Database.get().getMute(uuid, null, null);
+        if (mute != null) {
+            return new PunishmentInfo(
+                    "MUTE",
+                    mute.getReason(),
+                    mute.getDateEnd() // 0 for permanent
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Helper class to hold punishment information from LiteBans
+     */
+    private static class PunishmentInfo {
+        final String type;
+        final String reason;
+        final long expiryTimestamp; // 0 for permanent
+
+        PunishmentInfo(String type, String reason, long expiryTimestamp) {
+            this.type = type;
+            this.reason = reason;
+            this.expiryTimestamp = expiryTimestamp;
+        }
     }
 
     /**
