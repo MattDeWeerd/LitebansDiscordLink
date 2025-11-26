@@ -1,0 +1,11 @@
+name: LitebansDiscordLink
+version: "1.0.0"
+main: FoundryNorth.litebansDiscordLink.LitebansDiscordLink
+api-version: "1.21"
+prefix: LitebansDiscordLink
+load: POSTWORLD
+authors: [Matt546]
+description: A plugin which syncs litebans punishments to discordsrv linked players
+depend:
+  - LiteBans
+  - DiscordSRV

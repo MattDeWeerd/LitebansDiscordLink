@@ -1,0 +1,133 @@
+# ===================================================
+#         LitebansDiscordLink Configuration
+# ===================================================
+# This plugin syncs Litebans punishments to Discord
+# preventing banned/muted players from chatting
+# ===================================================
+
+# ===================================================
+# Database Settings
+# ===================================================
+# Used to persist punishment tracking across restarts
+# You can use the same MySQL database as Litebans
+database:
+  host: "localhost"
+  port: 3306
+  database: "minecraft"
+  username: "username"
+  password: "password"
+
+# ===================================================
+# Discord Enforcement Settings
+# ===================================================
+
+# The ID of the Discord role to apply to muted/banned players
+# To get a role ID: Enable Developer Mode in Discord > Right-click the role > Copy ID
+# If this is set to "0" or left empty, only message deletion will be used (role features disabled)
+muted-role-id: "0"
+
+# Whether to apply Discord server mute to punished players (prevents voice chat)
+# This works independently of the muted role
+apply-server-mute: false
+
+# ===================================================
+# Timing Settings
+# ===================================================
+
+# How often to check for expired punishments (in minutes)
+# When a punishment expires, the Discord role/mute will be automatically removed
+# Lower values = more responsive but more database queries
+# Recommended: 5-10 minutes
+expiry-check-interval: 5
+
+# Delay before initializing DiscordSRV integration (in seconds)
+# Gives DiscordSRV time to fully load on server startup
+# Only change if you experience initialization issues
+discordsrv-init-delay: 2
+
+# ===================================================
+# Message Settings
+# ===================================================
+
+# Messages sent to punished players when they try to chat in Discord channels
+# Available placeholders: {reason}, {time}
+messages:
+  banned:
+    - "⛔ You cannot send messages in this Discord server because you are banned on the Minecraft server."
+    - "**Reason:** {reason}"
+    - "**Time Remaining:** {time}"
+  muted:
+    - "🔇 You cannot send messages in this Discord server because you are muted on the Minecraft server."
+    - "**Reason:** {reason}"
+    - "**Time Remaining:** {time}"
+
+# Private messages sent to players when they receive a punishment
+# Available placeholders: {reason}, {time}
+notification-messages:
+  ban:
+    - "⛔ **You have been banned from the Minecraft server**"
+    - "**Reason:** {reason}"
+    - "**Duration:** {time}"
+    - ""
+    - "You will also be unable to chat in the Discord server while banned."
+  mute:
+    - "🔇 **You have been muted on the Minecraft server**"
+    - "**Reason:** {reason}"
+    - "**Duration:** {time}"
+    - ""
+    - "You will also be unable to chat in the Discord server while muted."
+  warn:
+    - "⚠️ **You have been warned on the Minecraft server**"
+    - "**Reason:** {reason}"
+    - ""
+    - "Please follow the server rules to avoid further action."
+
+# ===================================================
+# Logging Settings
+# ===================================================
+
+# Enable punishment logging to file
+# All punishments (applied, removed, expired) will be logged
+logging:
+  enabled: true
+  # Name of the log file (stored in plugins/LitebansDiscordLink/logs/)
+  filename: "punishments.log"
+
+# Discord channel logging
+# Send punishment enforcement messages to a Discord channel
+discord-log-channel:
+  enabled: false
+  # Channel ID to send log messages to
+  # To get a channel ID: Enable Developer Mode in Discord > Right-click the channel > Copy ID
+  channel-id: "0"
+  # Messages sent to the log channel
+  # Available placeholders: {player}, {discord-user}, {discord-id}, {punished-role}, {type}, {reason}, {duration}
+  messages:
+    role-applied:
+      enabled: true
+      message:
+        - "🔒 Applied the {punished-role} to {discord-user}"
+        - "**Player:** {player}"
+        - "**Type:** {type}"
+        - "**Reason:** {reason}"
+        - "**Duration:** {duration}"
+    role-removed:
+      enabled: true
+      message:
+        - "🔓 Removed the {punished-role} from {discord-user}"
+        - "**Player:** {player}"
+        - "**Type:** {type}"
+    punishment-expired:
+      enabled: true
+      message:
+        - "⏰ Punishment expired for {discord-user}"
+        - "**Player:** {player}"
+        - "**Type:** {type}"
+
+# ===================================================
+# Advanced Settings
+# ===================================================
+
+# Debug mode - prints additional information to console
+# Enable this if you're experiencing issues and need detailed logs
+debug: false
